@@ -13,6 +13,8 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import datetime as dt
+import scipy.stats as st
 
 # Descarga de datos
 def downloadData(tickers : "Símbolos de cotización"):
@@ -28,6 +30,38 @@ def downloadData(tickers : "Símbolos de cotización"):
 # Análisis histórico
 
 # Análisis del riesgo
+def brownianMotion(historicPrices : "DataFrame con los precios históricos de los ETF's",
+                significanceLevel : "Nivel de significancia %", colors : "colores"):
+    plt.style.use('seaborn')
+
+    for i in range(len(historicPrices.iloc[0])):
+        
+        # Parámetros históricos
+        returns = historicPrices.iloc[:, i].dropna().pct_change().dropna()
+        mu, sigma = np.mean(returns), np.std(returns)
+    
+        # Simulación de precios
+        idx = pd.bdate_range(returns.index[-1] + dt.timedelta(1), end = returns.index[-1] + dt.timedelta(365))
+        d_t = np.arange(1, len(idx) + 1)
+        expectedPrice = pd.Series(historicPrices.iloc[-1, i] * np.exp((mu - (sigma ** 2) / 2) * d_t), idx)
+        
+        # Intervalos de confianza
+        Z = st.norm.ppf(1 - significanceLevel / 2)
+        infLim = pd.Series(np.exp(np.log(historicPrices.iloc[-1, i]) + (mu - (sigma ** 2) / 2) * d_t - Z * (sigma * np.sqrt(d_t))), idx)
+        supLim = pd.Series(np.exp(np.log(historicPrices.iloc[-1, i]) + (mu - (sigma ** 2) / 2) * d_t + Z * (sigma * np.sqrt(d_t))), idx)
+        
+        # Visualización
+        fig, axes = plt.subplots(1, 1, figsize = (15, 3.5))
+        fig.suptitle("Simulación de precios: " + historicPrices.columns[i])
+        
+        axes.plot(historicPrices.iloc[:, i], color = colors[i], label = "Cierre")
+        axes.plot(expectedPrice, "--", color = "k", label = "E[Precio]: $" + str(round(expectedPrice[-1], 2)))
+        axes.fill_between(expectedPrice.index, infLim, supLim, color = colors[i], alpha = 0.25, 
+                          label = "Intervalo confianza " + str(100 - significanceLevel * 100) + "%")
+        axes.legend(loc = "upper left")
+        axes.set_xlabel("Fecha")
+        axes.set_ylabel("$ (MXN)")
+
 def riskAnalysis(historicPrices : "DataFrame con los precios históricos de los ETF's",
                 confidenceLevel : "Nivel de confianza", colors : "colores"):
     plt.style.use('seaborn')
