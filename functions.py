@@ -30,17 +30,21 @@ def downloadData(tickers : "Símbolos de cotización"):
 # Análisis histórico
 
 # Análisis del riesgo
-def brownianMotion(historicPrices : "DataFrame con los precios históricos de los ETF's",
-                significanceLevel : "Nivel de significancia %", colors : "colores"):
-    plt.style.use('seaborn')
-
-    for i in range(len(historicPrices.iloc[0])):
-        
-        # Parámetros históricos
-        returns = historicPrices.iloc[:, i].dropna().pct_change().dropna()
-        mu, sigma = np.mean(returns), np.std(returns)
+def riskAnalysis(historicPrices : "DataFrame con los precios históricos de los ETF's",
+                confidenceLevel : "Nivel de confianza", colors : "colores", significanceLevel : "Nivel de significancia"):
     
+    for i in range(len(historicPrices.iloc[0])):
+        plt.style.use('seaborn')
+    
+        # Rendimientos
+        returns = historicPrices.iloc[:, i].dropna().pct_change().dropna()
+    
+        # VaR y Expected Shortfall
+        VaR = np.percentile(returns, 100 - confidenceLevel) 
+        ES = np.mean(returns[returns < VaR])
+        
         # Simulación de precios
+        mu, sigma = np.mean(returns), np.std(returns)
         idx = pd.bdate_range(returns.index[-1] + dt.timedelta(1), end = returns.index[-1] + dt.timedelta(365))
         d_t = np.arange(1, len(idx) + 1)
         expectedPrice = pd.Series(historicPrices.iloc[-1, i] * np.exp((mu - (sigma ** 2) / 2) * d_t), idx)
@@ -49,41 +53,29 @@ def brownianMotion(historicPrices : "DataFrame con los precios históricos de lo
         Z = st.norm.ppf(1 - significanceLevel / 2)
         infLim = pd.Series(np.exp(np.log(historicPrices.iloc[-1, i]) + (mu - (sigma ** 2) / 2) * d_t - Z * (sigma * np.sqrt(d_t))), idx)
         supLim = pd.Series(np.exp(np.log(historicPrices.iloc[-1, i]) + (mu - (sigma ** 2) / 2) * d_t + Z * (sigma * np.sqrt(d_t))), idx)
-        
-        # Visualización
-        fig, axes = plt.subplots(1, 1, figsize = (15, 3.5))
-        fig.suptitle("Simulación de precios: " + historicPrices.columns[i])
-        
-        axes.plot(historicPrices.iloc[:, i], color = colors[i], label = "Cierre")
-        axes.plot(expectedPrice, "--", color = "k", label = "E[Precio]: $" + str(round(expectedPrice[-1], 2)))
-        axes.fill_between(expectedPrice.index, infLim, supLim, color = colors[i], alpha = 0.25, 
-                          label = "Intervalo confianza " + str(100 - significanceLevel * 100) + "%")
-        axes.legend(loc = "upper left")
-        axes.set_xlabel("Fecha")
-        axes.set_ylabel("$ (MXN)")
-
-def riskAnalysis(historicPrices : "DataFrame con los precios históricos de los ETF's",
-                confidenceLevel : "Nivel de confianza", colors : "colores"):
-    plt.style.use('seaborn')
-    
-    for i in range(len(historicPrices.iloc[0])):
-    
-        # Rendimientos
-        returns = historicPrices.iloc[:, i].dropna().pct_change().dropna()
-    
-        # VaR y Expected Shortfall
-        VaR = np.percentile(returns, 100 - confidenceLevel) 
-        ES = np.mean(returns[returns < VaR])
     
         # Visualización
-        fig, axes = plt.subplots(1, 2, figsize = (15, 3.5))
-        fig.suptitle("Value at Risk & Expected Shortfall: " + historicPrices.columns[i])
+        fig = plt.figure(figsize = (12, 7.25), constrained_layout = True)
+        spec = fig.add_gridspec(2, 2)
+        fig.suptitle("Simulación & Value at Risk | Expected Shortfall: " + historicPrices.columns[i])
         
-        axes[0].hist(returns, bins = 30, density = True, alpha = 0.35, color = colors[i])
-        axes[0].axvline(x = VaR, label = "VaR " + str(confidenceLevel) + "% : " + str(round(VaR * 100, 2)) + "%", linestyle = "--", color = colors[i])
-        axes[0].axvline(x = ES, label = "ES " + str(confidenceLevel) + "% : " + str(round(ES * 100, 2)) + "%", linestyle = "--", color = "k")
-        axes[0].set_xlabel("Rendimientos")
-        axes[0].legend()
+        ax0 = fig.add_subplot(spec[0, :])
+        ax0.plot(historicPrices.iloc[:, i], color = colors[i], label = "Cierre")
+        ax0.plot(expectedPrice, "--", color = "k", label = "E[Precio]: $" + str(round(expectedPrice[-1], 2)))
+        ax0.fill_between(expectedPrice.index, infLim, supLim, color = colors[i], alpha = 0.25, 
+                          label = "Intervalo confianza " + 
+                         str(100 - significanceLevel * 100) + "% " + "(" + str(round(infLim[-1], 2)) + "-" 
+                         + str(round(supLim[-1], 2)) + ")")
+        ax0.legend(loc = "upper left")
+        ax0.set_xlabel("Fecha")
+        ax0.set_ylabel("$ (MXN)")
+        
+        ax10 = fig.add_subplot(spec[1, 0])
+        ax10.hist(returns, bins = 30, density = True, alpha = 0.35, color = colors[i])
+        ax10.axvline(x = VaR, label = "VaR " + str(confidenceLevel) + "% : " + str(round(VaR * 100, 2)) + "%", linestyle = "--", color = colors[i])
+        ax10.axvline(x = ES, label = "ES " + str(confidenceLevel) + "% : " + str(round(ES * 100, 2)) + "%", linestyle = "--", color = "k")
+        ax10.set_xlabel("Rendimientos")
+        ax10.legend()
     
         # Backtesting
         returns = pd.DataFrame(returns)
@@ -99,11 +91,11 @@ def riskAnalysis(historicPrices : "DataFrame con los precios históricos de los 
         
         # Visualización
         returns.dropna(inplace = True)
-        axes[1].plot(returns.iloc[:, 0], label = "Retornos", color = colors[i], alpha = 0.35)
-        axes[1].plot(returns.iloc[:, 1], label = "Backtesting: VaR", color = colors[i])
-        axes[1].plot(returns.iloc[:, 2], label = "Backtesting: ES", color = "k")
-        axes[1].set_ylabel("%")
-        axes[1].set_xlabel("Fecha")
-        axes[1].legend()
-            
+        ax11 = fig.add_subplot(spec[1, 1])
+        ax11.plot(returns.iloc[:, 0], label = "Retornos", color = colors[i], alpha = 0.35)
+        ax11.plot(returns.iloc[:, 1], label = "Backtesting: VaR", color = colors[i])
+        ax11.plot(returns.iloc[:, 2], label = "Backtesting: ES", color = "k")
+        ax11.set_ylabel("%")
+        ax11.set_xlabel("Fecha")
+        ax11.legend()
     
