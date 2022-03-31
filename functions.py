@@ -55,8 +55,8 @@ def riskAnalysis(historicPrices : "DataFrame con los precios históricos de los 
         supLim = pd.Series(np.exp(np.log(historicPrices.iloc[-1, i]) + (mu - (sigma ** 2) / 2) * d_t + Z * (sigma * np.sqrt(d_t))), idx)
     
         # Visualización
-        fig = plt.figure(figsize = (12, 7.25), constrained_layout = True)
-        spec = fig.add_gridspec(2, 2)
+        fig = plt.figure(figsize = (14, 12), constrained_layout = True)
+        spec = fig.add_gridspec(3, 2)
         fig.suptitle("Simulación & Value at Risk | Expected Shortfall: " + historicPrices.columns[i])
         
         ax0 = fig.add_subplot(spec[0, :])
@@ -98,4 +98,12 @@ def riskAnalysis(historicPrices : "DataFrame con los precios históricos de los 
         ax11.set_ylabel("%")
         ax11.set_xlabel("Fecha")
         ax11.legend()
-    
+        
+        # Drawdown
+        V = historicPrices.iloc[:, i]
+        ax2 = fig.add_subplot(spec[2, :])
+        ax2.fill_between(V.index, (V - V.cummax()) / V.cummax(), color = colors[i], alpha = 0.25, 
+                          label = "Drawdown")
+        ax2.legend(loc = "lower left")
+        ax2.set_xlabel("Fecha")
+        ax2.set_ylabel("%")
