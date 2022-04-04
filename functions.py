@@ -23,6 +23,12 @@ from scipy import optimize as opt
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
+from bs4 import BeautifulSoup
+import urllib.request
+import re
+import json
+import seaborn as sns
+
 # Descarga de datos
 def downloadData(tickers : "Símbolos de cotización"):
     data = pd.DataFrame()    
@@ -33,6 +39,87 @@ def downloadData(tickers : "Símbolos de cotización"):
     return data
 
 # Análisis descriptivo
+def fundData(tickers: 'Nombre del ticker en lista', 
+              links: 'Link del ticker en BlackRock en lista',
+             colors: 'Lista de la paleta de colores a utilizar (seaborn)'):
+    
+    'Función que grafica la composición del fondo, su exposición geográfica y su exposición por sector.'
+    
+    def findOccurrences(s, ch):
+        return [i for i, letter in enumerate(s) if letter == ch]
+    
+    for i in range(len(links)):
+        
+        # Descarga del html de la página
+        source = urllib.request.urlopen(links[i]).read()
+        soup = BeautifulSoup(source,'html.parser')
+        
+        # Tabla de composición del fondo
+        table = soup.find_all('table')
+
+        df1 = pd.read_html(str(table))[4]
+        df2 = pd.read_html(str(table))[5]
+
+        comp = pd.concat([df1, df2])[::-1]
+        
+        labels = comp["Nombre"]
+        data = comp["Peso (%)"] 
+
+        # Visualización
+        plt.style.use('seaborn')
+        fig = plt.figure(figsize = (16, 14), constrained_layout = True)
+        
+        # Gráfica de la composición del fondo
+        spec = fig.add_gridspec(3, 2)
+        fig.suptitle(tickers[i], fontweight='bold')
+        
+        colors_comp = sns.color_palette(colors[i], len(comp))
+        
+        ax0 = fig.add_subplot(spec[0, :])
+        ax0.barh(labels, data, align = 'center', color = colors_comp) 
+        
+        for j, v in enumerate(sorted(data)):
+            plt.text(v + 0.2, j, str(round(v, 2)), color = 'black', va = "center", weight = 'bold')
+        
+        # Información del sector y región de exposición del fondo
+        sector = soup.find(string=re.compile('var tabsSectorDataTable')) 
+        region = soup.find(string=re.compile('var subTabsCountriesDataTable')) 
+
+        data_sector = sector[findOccurrences(sector, '[')[2]:findOccurrences(sector, ']')[0] + 1]
+        data_region = region[findOccurrences(region, '[')[2]:findOccurrences(region, ']')[0] + 1]
+        
+        indexes_sector = [x.start() for x in re.finditer('\,}', data_sector)]
+        indexes_region = [x.start() for x in re.finditer('\,}', data_region)]
+        
+        data_sector = "".join([char for idx, char in enumerate(data_sector) if idx not in indexes_sector])
+        data_region = "".join([char for idx, char in enumerate(data_region) if idx not in indexes_region])
+        
+        df_sector = pd.DataFrame(json.loads(data_sector))
+        df_region = pd.DataFrame(json.loads(data_region))
+        
+        df_sector = df_sector[df_sector["value"].str.contains("0.00")==False]
+        df_region = df_region[df_region["value"].str.contains("0.00")==False]
+        
+        # Gráficas de exposición por sector y por región
+        colors_sector = sns.color_palette(colors[i], len(df_sector))[::-1]
+        colors_region = sns.color_palette(colors[i], len(df_region))[::-1]
+        
+        ax10 = fig.add_subplot(spec[1, 0])
+        ax10.pie(df_sector.iloc[:,1], autopct='%.1f%%', pctdistance=1.1, colors=colors_sector, #labeldistance=1.4,
+               wedgeprops={'linewidth': 1, 'edgecolor': 'white'},
+               textprops={'size': 'large'});
+        ax10.axis('equal')
+        ax10.legend(df_sector.iloc[:,0], loc='center left', bbox_to_anchor=(1, 0.5), shadow = True)
+        plt.title('Exposición a sectores', fontweight='bold')
+        
+        ax20 = fig.add_subplot(spec[2, 0])
+        ax20.pie(df_region.iloc[:,1], autopct='%.1f%%', pctdistance=1.1, colors=colors_region, #labeldistance=1.4,
+               wedgeprops={'linewidth': 1, 'edgecolor': 'white'},
+               textprops={'size': 'large'});
+        ax20.axis('equal')
+        ax20.legend(df_region.iloc[:,0], loc='center left', bbox_to_anchor=(1, 0.5), shadow = True)
+        plt.title("Exposición geográfica", fontweight='bold')
+        
 
 # Análisis histórico
 
