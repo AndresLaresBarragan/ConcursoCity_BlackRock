@@ -29,6 +29,18 @@ import re
 import json
 import seaborn as sns
 
+import pandas as pd
+import numpy as np
+import yfinance as yf
+import statsmodels.api as sm 
+import seaborn as sns
+import ipywidgets as widgets
+from ipywidgets import interact, interact_manual, interactive
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import warnings
+warnings.filterwarnings("ignore")
+
 # Descarga de datos
 def downloadData(tickers : "Símbolos de cotización"):
     data = pd.DataFrame()    
@@ -389,4 +401,120 @@ def histAnalysis(tickers, start_date="2018-03-01", end_date="2022-03-01"):
     
     #### Análisis de media-varianza ####
     Activos.plot_risk_return(portafolios)
+    
+    
+######### -------------------------------------   ETF's vs Factores ----------------------------------------
+
+def etf_equity(variables):
+
+    data = pd.DataFrame()
+
+    for variable in variables:
+        data[variable] = yf.download(variable, progress = False, interval = "1mo")["Adj Close"]
+
+    dataReturns = data.pct_change().dropna()
+    
+    X = dataReturns.iloc[:, 1:] 
+    Y = dataReturns.iloc[:, 0]
+    X = sm.add_constant(X) 
+    
+    model = sm.OLS(Y, X).fit()
+
+    return model, dataReturns
+
+def model_coef(model):
+
+    data = model.params
+    values = data.tolist()
+    variables = data.index.tolist()
+    y_pos = np.arange(len(variables))
+    
+    results_as_html = model.summary().tables[0].as_html()
+    table = pd.read_html(results_as_html, header=0, index_col=0)[0]
+    title = table.columns.tolist()[0]
+
+    fig = go.Figure(go.Bar(
+                x=values,
+                y=variables,
+                orientation='h'))
+
+    fig.update_layout(title = "Sensibilidad a Factores: " + title)
+        
+    return fig
+
+def etfButton():
+    # ETF's seleccionados
+    etfs = ["BLKDINB1-A.MX", "BLKCORB0-D.MX", "GOLD5+B2-C.MX", "BLKINT1B1-D.MX", "BLKUSEQB1-C.MX"]
+    ETFButton = widgets.Dropdown(options = etfs, description = "ETF's")
+    
+    return ETFButton
+
+def etfFactorsAnalysis(ETFButton):
+    
+    # ETF's de renta variable
+    if ETFButton.value == "GOLD5+B2-C.MX" or ETFButton.value == "BLKINT1B1-D.MX" or ETFButton.value == "BLKUSEQB1-C.MX":
+        variables2 = ["IEF", "LQD", "UUP", "GSG", "HYG", "^VIX"]
+        if ETFButton.value == "GOLD5+B2-C.MX":
+            variables = [ETFButton.value] + ["^MXX", "^GSPC", "ACWI", "MXN=X"] + variables2
+            
+        elif ETFButton.value == "BLKINT1B1-D.MX":
+            variables = [ETFButton.value] + ["^GSPC", "VEA", "MXN=X"] + variables2
+            
+        else:
+            variables = [ETFButton.value] + ["^GSPC", "MXN=X"] + variables2
+            
+        # Regresión lineal    
+        model, data = etf_equity(variables)
+        yhat = model.predict()
+        r2 = str(round(model.rsquared_adj, 2) * 100)
+        
+        # Visuales
+        fig1 = make_subplots(specs=[[{"secondary_y": False}]])
+        fig1.add_trace(go.Scatter(x = data.index, y = data.iloc[:, 0], name = "Rendimientos"), 
+                       secondary_y = False,)
+        fig1.add_trace(go.Scatter(x = data.index, y = yhat, 
+                                  name = "Predicción " + ", R-squared = " + r2 + "%"), 
+                       secondary_y = False,)
+        fig1.update_layout(title = "Regresión Lineal: " +  ETFButton.value + " ETF vs Factores",  xaxis_title = "Fecha")
+        fig1.update_yaxes(title_text = "Retornos", secondary_y = False)        
+        fig1.show()
+        
+        fig2 = model_coef(model)
+        fig2.show()
+        
+        return model, data
+        
+    # ETF's de renta fija
+    else:
+        return 0
+    
+    
+def factorsButton(data):
+    # Factores 
+    factors = list(data.iloc[:, 1:].columns)
+    FactorsButton = widgets.Dropdown(options = factors, description = "Factores")
+    
+    return FactorsButton
+
+def factorsVisual(data, ETFButton, FactorsButton):
+    # Regresión lineal con el factor seleccionado
+    
+    X = data[FactorsButton.value]
+    Y = data[ETFButton.value]
+    X = sm.add_constant(X) 
+    
+    model = sm.OLS(Y, X).fit()
+    yhat = np.dot(X.values, model.params.values)
+    
+    fig1 = make_subplots(specs=[[{"secondary_y": False}]])
+    fig1.add_trace(go.Scatter(x = X.iloc[:, 1], y = yhat, name = "Recta Ajustada"), 
+                       secondary_y = False,)
+    fig1.add_trace(go.Scatter(x = X.iloc[:, 1], y = Y, 
+                                  name = "ETF vs Factor", mode = "markers"), secondary_y = False,)
+    
+    fig1.update_layout(title = "Regresión Lineal: " +  ETFButton.value + " ETF vs Factor " + FactorsButton.value,  
+                       xaxis_title = "Retornos Factor")
+    fig1.update_yaxes(title_text = "Retornos ETF", secondary_y = False)  
+    fig1.show()
+
     
