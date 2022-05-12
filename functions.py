@@ -404,6 +404,109 @@ def histAnalysis(tickers, start_date="2018-03-01", end_date="2022-03-01"):
     
     
 ######### -------------------------------------   ETF's vs Factores ----------------------------------------
+# Create a simple python class to retrieve the CETES information
+import pandas as pd
+import time
+import requests
+from typing import Optional, List
+import yfinance as yf
+
+url_template = 'https://www.banxico.org.mx/SieInternet/consultaSerieGrafica.do?s={serie}&versionSerie=LA-MAS-RECIENTE&l=es'
+tags = {
+28:"SF43936,CF107,5",
+91:"SF43939,CF107,9",
+182:"SF43942,CF107,13",
+364:"SF43945,CF107,17"
+    }
+
+class Cetes:
+    
+    
+    def _init_(self, tag: int):
+        if tag not in tags.keys():
+            raise ValueError(f"Invalid Tag value:{tag}")
+        self.tag = tag
+        self._historical_data = None
+    
+    @classmethod
+    def available_tags(cls) -> List[int]:
+        return list(cls.tags.keys())
+        
+    @staticmethod
+    def tag28() -> 'Cetes':
+        return Cetes(tag=28)
+    
+    @staticmethod
+    def tag91() -> 'Cetes':
+        return Cetes(tag=91)
+    
+    @staticmethod
+    def tag182() -> 'Cetes':
+        return Cetes(tag=182)
+    
+    @property
+    def url(self) ->str:
+        return url_template.format(serie=tags[self.tag])
+        
+    def get_historical_data(self, use_cache: bool=False) -> pd.DataFrame:
+        if use_cache and self._historical_data is not None:
+            return self._historical_data
+        response = requests.get(self.url)
+        self._historical_data = pd.DataFrame(response.json().get('valores',[]), columns=['Date', 'Value'])\
+            .query("Value != -989898.0")
+        return self.get_historical_data(use_cache=True) # concepto de recursividad en metodos
+    
+    # Optional [str] = Union[str,'']
+    def get_data(self, date_start: Optional[str] = None, date_end: Optional[str] = None, use_cache: bool=False) -> pd.DataFrame:
+        # get historical data
+        historical_data = self.get_historical_data(use_cache=use_cache)
+        # format dates
+        date_start = date_start or historical_data.Date.min()
+        date_end = date_end or historical_data.Date.max()
+        return historical_data.query(f"'{date_start}' <= Date <= '{date_end}'").reset_index(drop=True)
+    
+def blkdin():
+    
+    rf = Cetes(28)
+    cetes28.url
+    data = rf.get_data(date_start='2018-01-01')
+    
+    ticker = "BLKDINB1-A.MX"
+    etf = yf.download(ticker, progress = False, interval = "1wk", start="2018-01-04")[["Adj Close"]]
+    
+    etf['cetes28d'] = data.Value.values
+    df_ret = pd.DataFrame({
+    "etf":etf["Adj Close"].pct_change().dropna(),
+    "cetes28d":etf['cetes28d'].diff().dropna()})
+    
+    return df_ret
+
+def blkcor():
+    
+    rf = Cetes(28)
+    cetes28.url
+    data = rf.get_data(date_start='2018-01-01')
+    
+    ticker = "BLKCORB0-D.MX"
+    etf = yf.download(ticker, progress = False, interval = "1wk", start="2018-01-04")[["Adj Close"]]
+    
+    etf['cetes28d'] = data.Value.values
+    df_ret = pd.DataFrame({
+    "etf":etf["Adj Close"].pct_change().dropna(),
+    "cetes28d":etf['cetes28d'].diff().dropna()})
+    
+    return df_ret
+
+def etf_fixed(dataReturns):
+    
+    X = dataReturns.iloc[:, 1:] 
+    Y = dataReturns.iloc[:, 0]
+    X = sm.add_constant(X) 
+    
+    model = sm.OLS(Y, X).fit()
+
+    return model, dataReturns
+
 
 def etf_equity(variables):
 
@@ -455,13 +558,13 @@ def etfFactorsAnalysis(ETFButton):
     if ETFButton.value == "GOLD5+B2-C.MX" or ETFButton.value == "BLKINT1B1-D.MX" or ETFButton.value == "BLKUSEQB1-C.MX":
         variables2 = ["IEF", "LQD", "UUP", "GSG", "HYG", "^VIX"]
         if ETFButton.value == "GOLD5+B2-C.MX":
-            variables = [ETFButton.value] + ["^MXX", "^GSPC", "ACWI", "MXN=X"] + variables2
+            variables = [ETFButton.value] + ["^MXX", "ACWI", "MXN=X"] + ["LQD", "HYG"]
             
         elif ETFButton.value == "BLKINT1B1-D.MX":
-            variables = [ETFButton.value] + ["^GSPC", "VEA", "MXN=X"] + variables2
+            variables = [ETFButton.value] + ["^GSPC", "VEA", "MXN=X"]  
             
         else:
-            variables = [ETFButton.value] + ["^GSPC", "MXN=X"] + variables2
+            variables = [ETFButton.value] + ["^GSPC", "MXN=X"] 
             
         # Regresión lineal    
         model, data = etf_equity(variables)
@@ -485,9 +588,53 @@ def etfFactorsAnalysis(ETFButton):
         return model, data
         
     # ETF's de renta fija
+        # ETF's de renta fija
     else:
-        return 0
-    
+        if ETFButton.value == "BLKDINB1-A.MX":
+            # Regresión lineal    
+            dataReturns = blkdin()
+            model, data = etf_fixed(dataReturns)
+            yhat = model.predict()
+            r2 = str(round(model.rsquared_adj, 2) * 100)
+
+            # Visuales
+            fig1 = make_subplots(specs=[[{"secondary_y": False}]])
+            fig1.add_trace(go.Scatter(x = data.index, y = data.iloc[:, 0], name = "Rendimientos"), 
+                           secondary_y = False,)
+            fig1.add_trace(go.Scatter(x = data.index, y = yhat, 
+                                      name = "Predicción " + ", R-squared = " + r2 + "%"), 
+                           secondary_y = False,)
+            fig1.update_layout(title = "Regresión Lineal: " +  ETFButton.value + " ETF vs Factores",  xaxis_title = "Fecha")
+            fig1.update_yaxes(title_text = "Retornos", secondary_y = False)        
+            fig1.show()
+
+            fig2 = model_coef(model)
+            fig2.show()
+
+            return model, data
+        
+        else:
+            # Regresión lineal    
+            dataReturns = blkcor()
+            model, data = etf_fixed(dataReturns)
+            yhat = model.predict()
+            r2 = str(round(model.rsquared_adj, 2) * 100)
+
+            # Visuales
+            fig1 = make_subplots(specs=[[{"secondary_y": False}]])
+            fig1.add_trace(go.Scatter(x = data.index, y = data.iloc[:, 0], name = "Rendimientos"), 
+                           secondary_y = False,)
+            fig1.add_trace(go.Scatter(x = data.index, y = yhat, 
+                                      name = "Predicción " + ", R-squared = " + r2 + "%"), 
+                           secondary_y = False,)
+            fig1.update_layout(title = "Regresión Lineal: " +  ETFButton.value + " ETF vs Factores",  xaxis_title = "Fecha")
+            fig1.update_yaxes(title_text = "Retornos", secondary_y = False)        
+            fig1.show()
+
+            fig2 = model_coef(model)
+            fig2.show()
+
+            return model, data
     
 def factorsButton(data):
     # Factores 
