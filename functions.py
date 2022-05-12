@@ -422,7 +422,7 @@ tags = {
 class Cetes:
     
     
-    def _init_(self, tag: int):
+    def __init__(self, tag: int):
         if tag not in tags.keys():
             raise ValueError(f"Invalid Tag value:{tag}")
         self.tag = tag
@@ -463,12 +463,13 @@ class Cetes:
         # format dates
         date_start = date_start or historical_data.Date.min()
         date_end = date_end or historical_data.Date.max()
+
         return historical_data.query(f"'{date_start}' <= Date <= '{date_end}'").reset_index(drop=True)
     
 def blkdin():
     
     rf = Cetes(28)
-    cetes28.url
+    #cetes28.url
     data = rf.get_data(date_start='2018-01-01')
     
     ticker = "BLKDINB1-A.MX"
@@ -484,7 +485,7 @@ def blkdin():
 def blkcor():
     
     rf = Cetes(28)
-    cetes28.url
+    #cetes28.url
     data = rf.get_data(date_start='2018-01-01')
     
     ticker = "BLKCORB0-D.MX"
@@ -506,8 +507,7 @@ def etf_fixed(dataReturns):
     model = sm.OLS(Y, X).fit()
 
     return model, dataReturns
-
-
+    
 def etf_equity(variables):
 
     data = pd.DataFrame()
@@ -547,7 +547,8 @@ def model_coef(model):
 
 def etfButton():
     # ETF's seleccionados
-    etfs = ["BLKDINB1-A.MX", "BLKCORB0-D.MX", "GOLD5+B2-C.MX", "BLKINT1B1-D.MX", "BLKUSEQB1-C.MX"]
+    #etfs = ["BLKDINB1-A.MX", "BLKCORB0-D.MX", "GOLD5+B2-C.MX", "BLKINT1B1-D.MX", "BLKUSEQB1-C.MX"]
+    etfs = ["GOLD5+B2-C.MX", "BLKINT1B1-D.MX", "BLKUSEQB1-C.MX"]
     ETFButton = widgets.Dropdown(options = etfs, description = "ETF's")
     
     return ETFButton
@@ -561,7 +562,7 @@ def etfFactorsAnalysis(ETFButton):
             variables = [ETFButton.value] + ["^MXX", "ACWI", "MXN=X"] + ["LQD", "HYG"]
             
         elif ETFButton.value == "BLKINT1B1-D.MX":
-            variables = [ETFButton.value] + ["^GSPC", "VEA", "MXN=X"]  
+            variables = [ETFButton.value] + ["^GSPC", "VEA", "MXN=X"] 
             
         else:
             variables = [ETFButton.value] + ["^GSPC", "MXN=X"] 
@@ -588,7 +589,6 @@ def etfFactorsAnalysis(ETFButton):
         return model, data
         
     # ETF's de renta fija
-        # ETF's de renta fija
     else:
         if ETFButton.value == "BLKDINB1-A.MX":
             # Regresión lineal    
@@ -636,6 +636,7 @@ def etfFactorsAnalysis(ETFButton):
 
             return model, data
     
+    
 def factorsButton(data):
     # Factores 
     factors = list(data.iloc[:, 1:].columns)
@@ -663,5 +664,4 @@ def factorsVisual(data, ETFButton, FactorsButton):
                        xaxis_title = "Retornos Factor")
     fig1.update_yaxes(title_text = "Retornos ETF", secondary_y = False)  
     fig1.show()
-
-    
+        
